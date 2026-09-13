@@ -91,8 +91,8 @@ const seeds=[
 ];
 
 function load(k,d){try{const v=JSON.parse(localStorage.getItem('trainly-'+k));if(!v)return d;if(k==='exercises'){const map=Object.fromEntries(d.map(x=>[x.id,x]));const merged=v.map(x=>map[x.id]?{...x,...map[x.id],custom:x.custom,favorite:x.favorite}:x);for(const x of d)if(!merged.some(e=>e.id===x.id))merged.push(x);return merged}return v}catch{return d}}
-function save(){localStorage.setItem('trainly-exercises',JSON.stringify(state.exercises));localStorage.setItem('trainly-workouts',JSON.stringify(state.workouts));localStorage.setItem('trainly-history',JSON.stringify(state.history));state.active?localStorage.setItem('trainly-active',JSON.stringify(state.active)):localStorage.removeItem('trainly-active')}
-const state={tab:'home',exercises:load('exercises',seeds),workouts:load('workouts',[{id:'glutes',name:'Ноги и ягодицы',exercises:['squat','hip','rdl','press','abduction'],last:'ещё не выполнена'}]),history:load('history',[]),selectedExercise:null,selectedWorkout:null,builder:null,active:load('active',null),filter:'Все',query:'',sheet:null,detailTab:'about',advanced:{equipment:[],types:[],difficulty:'Любой',mechanics:'Любая'}};
+function save(){const localExercises=state.exercises.filter(e=>e.custom);localStorage.setItem('trainly-exercises',JSON.stringify(localExercises));localStorage.setItem('trainly-favorites',JSON.stringify(state.exercises.filter(e=>e.favorite).map(e=>e.id)));localStorage.setItem('trainly-workouts',JSON.stringify(state.workouts));localStorage.setItem('trainly-history',JSON.stringify(state.history));state.active?localStorage.setItem('trainly-active',JSON.stringify(state.active)):localStorage.removeItem('trainly-active')}
+const state={tab:'home',exercises:load('exercises',seeds),workouts:load('workouts',[{id:'glutes',name:'Ноги и ягодицы',exercises:['squat','hip','rdl','press','abduction'],last:'ещё не выполнена'}]),history:load('history',[]),selectedExercise:null,selectedWorkout:null,builder:null,active:load('active',null),filter:'Все',query:'',sheet:null,detailTab:'about',catalogStatus:'Подключение каталога Lyfta…',catalogCount:0,advanced:{equipment:[],types:[],difficulty:'Любой',mechanics:'Любая'}};
 const I={home:'⌂',workouts:'♜',exercises:'◎',history:'◷',progress:'▥'};
 function header(t,right=''){return `<div class="topbar"><h1>${esc(t)}</h1>${right}</div>`}
 function nav(){return `<nav class="bottom-nav">${[['home','Главная'],['workouts','Тренировки'],['exercises','Упражнения'],['history','История'],['progress','Прогресс']].map(([id,l])=>`<button data-nav="${id}" class="${state.tab===id?'active':''}"><b>${I[id]}</b><span>${l}</span></button>`).join('')}</nav>`}
@@ -102,7 +102,7 @@ function stat(n,t){return `<div class="stat"><strong>${n}</strong><span>${t}</sp
 function home(){let h=state.history;return `<div class="page">${header('Главная')}<section class="hero-card"><span class="eyebrow">ГОТОВА К ТРЕНИРОВКЕ?</span><h2>Начни тренировку</h2><p>Выбери готовую программу или создай свою.</p>${state.workouts[0]?`<button class="primary" data-start="${state.workouts[0].id}">▶ ${esc(state.workouts[0].name)}</button>`:''}<button class="ghost" data-create-workout>＋ Создать тренировку</button></section><div class="stats-row">${stat(h.length,'тренировок')}${stat(h.reduce((a,x)=>a+x.sets,0),'подходов')}${stat(h.reduce((a,x)=>a+x.volume,0),'кг объёма')}</div><h3 class="section-title">Последние тренировки</h3>${h.length?h.slice(0,3).map(historyCard).join(''):'<div class="empty">После первой тренировки здесь появится история.</div>'}</div>`}
 function workouts(){return `<div class="page">${header('Тренировки','<button class="round" data-create-workout>＋</button>')}<p class="sub">Создавай свои программы и запускай их одним нажатием.</p><div class="stack">${state.workouts.map(w=>`<div class="workout-card" data-open-workout="${w.id}"><div><h3>${esc(w.name)}</h3><p>${w.exercises.length} упражнений · ${esc(w.last||'ещё не выполнена')}</p><div class="avatar-row">${w.exercises.slice(0,4).map(id=>{let e=state.exercises.find(x=>x.id===id);return e?`<img src="${e.media}">`:''}).join('')}</div></div><button class="start-mini" data-start="${w.id}">Начать</button></div>`).join('')}</div></div>`}
 function muscleKind(f){return ({'Грудь':'chest','Спина':'back','Плечи':'shoulders','Бицепс':'arms','Трицепс':'arms','Квадрицепс':'quads','Бицепс бедра':'hamstrings','Ягодицы':'glutes','Пресс':'abs','Икры':'calves','Предплечья':'arms','Шея':'neck'}[f]||'torso')}
-function exercises(){const muscles=['Избранное','Кардио','Грудь','Спина','Бицепс','Трицепс','Квадрицепс','Бицепс бедра','Плечи','Ягодицы','Пресс','Икры','Предплечья','Шея','Мои'];let a=state.advanced;let list=state.exercises.filter(e=>{let q=state.query.toLowerCase(),qok=!q||(e.name+' '+e.muscle+' '+e.equipment).toLowerCase().includes(q);let f=state.filter;let fok=f==='Все'||(f==='Мои'&&e.custom)||(f==='Избранное'&&e.favorite)||e.muscle===f||(f==='Кардио'&&e.type==='Кардио');let eq=!a.equipment.length||a.equipment.includes(e.equipment);let ty=!a.types.length||a.types.includes(e.type);let dif=a.difficulty==='Любой'||e.difficulty===a.difficulty;let mech=a.mechanics==='Любая'||e.mechanics===a.mechanics;return qok&&fok&&eq&&ty&&dif&&mech});let count=a.equipment.length+a.types.length+(a.difficulty!=='Любой'?1:0)+(a.mechanics!=='Любая'?1:0);return `<div class="page">${header('Упражнения','<button class="round" data-custom>＋</button>')}<div class="searchbox"><b>⌕</b><input id="search" value="${esc(state.query)}" placeholder="Найти упражнение"><button class="camera" data-open-filters>☷${count?`<i>${count}</i>`:''}</button></div><div class="muscle-scroll"><button class="muscle-tile ${state.filter==='Все'?'on':''}" data-filter="Все"><span>Все</span><small>Все</small></button>${muscles.map(f=>`<button class="muscle-tile ${state.filter===f?'on':''}" data-filter="${f}"><img src="${f==='Мои'?muscleSvg('+','#64748b','torso'):f==='Избранное'?muscleSvg('★','#64748b','torso'):f==='Кардио'?muscleSvg('Кардио','#e11d48','torso'):muscleSvg(f,'#ef4444',muscleKind(f))}"><small>${esc(f)}</small></button>`).join('')}<button class="muscle-tile filter-tile" data-open-filters><img src="${equipmentSvg('Другое')}"><small>Фильтры${count?` (${count})`:''}</small></button></div><div class="results-head"><strong>${list.length} упражнений</strong>${count?'<button data-clear-filters>Сбросить фильтры</button>':''}</div><div class="exercise-list">${list.length?list.map(exRow).join(''):'<div class="empty">Ничего не найдено. Измени фильтры или создай своё упражнение.</div>'}</div></div>`}
+function exercises(){const muscles=['Избранное','Кардио','Грудь','Спина','Бицепс','Трицепс','Квадрицепс','Бицепс бедра','Плечи','Ягодицы','Пресс','Икры','Предплечья','Шея','Мои'];let a=state.advanced;let list=state.exercises.filter(e=>{let q=state.query.toLowerCase(),qok=!q||(e.name+' '+e.muscle+' '+e.equipment).toLowerCase().includes(q);let f=state.filter;let fok=f==='Все'||(f==='Мои'&&e.custom)||(f==='Избранное'&&e.favorite)||e.muscle===f||(f==='Кардио'&&e.type==='Кардио');let eq=!a.equipment.length||a.equipment.includes(e.equipment);let ty=!a.types.length||a.types.includes(e.type);let dif=a.difficulty==='Любой'||e.difficulty===a.difficulty;let mech=a.mechanics==='Любая'||e.mechanics===a.mechanics;return qok&&fok&&eq&&ty&&dif&&mech});let count=a.equipment.length+a.types.length+(a.difficulty!=='Любой'?1:0)+(a.mechanics!=='Любая'?1:0);return `<div class="page">${header('Упражнения','<button class="round" data-custom>＋</button>')}<div class="searchbox"><b>⌕</b><input id="search" value="${esc(state.query)}" placeholder="Найти упражнение"><button class="camera" data-open-filters>☷${count?`<i>${count}</i>`:''}</button></div><div class="muscle-scroll"><button class="muscle-tile ${state.filter==='Все'?'on':''}" data-filter="Все"><span>Все</span><small>Все</small></button>${muscles.map(f=>`<button class="muscle-tile ${state.filter===f?'on':''}" data-filter="${f}"><img src="${f==='Мои'?muscleSvg('+','#64748b','torso'):f==='Избранное'?muscleSvg('★','#64748b','torso'):f==='Кардио'?muscleSvg('Кардио','#e11d48','torso'):muscleSvg(f,'#ef4444',muscleKind(f))}"><small>${esc(f)}</small></button>`).join('')}<button class="muscle-tile filter-tile" data-open-filters><img src="${equipmentSvg('Другое')}"><small>Фильтры${count?` (${count})`:''}</small></button></div><div class="catalog-status"><span>${esc(state.catalogStatus)}</span>${state.catalogCount?`<b>${state.catalogCount.toLocaleString('ru-RU')}</b>`:''}</div><div class="results-head"><strong>${list.length} упражнений</strong>${count?'<button data-clear-filters>Сбросить фильтры</button>':''}</div><div class="exercise-list">${list.length?list.map(exRow).join(''):'<div class="empty">Ничего не найдено. Измени фильтры или создай своё упражнение.</div>'}</div></div>`}
 function exRow(e){return `<button class="exercise-row" data-ex="${e.id}"><img src="${e.media}"><div><h3>${esc(e.name)}${e.custom?'<span class="badge">Моё</span>':''}</h3><p>${esc(e.muscle)} · ${esc(e.equipment)}</p></div><b>›</b></button>`}
 function exerciseDetail(e){let h=state.history.filter(x=>x.exerciseIds?.includes(e.id));return `<div class="page detail-page">${backHead(e.name,e.muscle,`<button class="icon-btn" data-favorite="${e.id}" aria-label="Избранное">${e.favorite?'★':'☆'}</button>`)}<div class="tabs"><button data-detail-tab="about" class="${state.detailTab==='about'?'on':''}">Описание</button><button data-detail-tab="history" class="${state.detailTab==='history'?'on':''}">История</button><button data-detail-tab="progress" class="${state.detailTab==='progress'?'on':''}">Прогресс</button></div>${state.detailTab==='about'?`<div class="media-card"><img id="exercise-media" src="${e.media}"><button class="media-toggle" data-toggle-media>▶ Анимация</button></div><div class="info-grid"><div><span>Основная мышца</span><strong>${esc(e.muscle)}</strong></div><div><span>Оборудование</span><strong>${esc(e.equipment)}</strong></div><div><span>Тип</span><strong>${esc(e.type)}</strong></div><div><span>Сложность</span><strong>${esc(e.difficulty)}</strong></div></div>${e.secondary?.length?`<h3 class="section-title">Дополнительные мышцы</h3><div class="tag-row">${e.secondary.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:''}<h3 class="section-title">Техника выполнения</h3><ol class="steps">${(e.instructions||[]).map((s,i)=>`<li><span>${i+1}</span><p>${esc(s)}</p></li>`).join('')}</ol><button class="primary full" data-add-ex-to-workout="${e.id}">＋ Добавить в тренировку</button>`:state.detailTab==='history'?`<div class="stack">${h.length?h.map(historyCard).join(''):'<div class="empty">Это упражнение ещё не выполнялось.</div>'}</div>`:`<div class="progress-placeholder"><h3>Прогресс по упражнению</h3><p>После тренировок здесь появятся лучший вес, объём и динамика.</p></div>`}</div>`}
 function workoutDetail(w){return `<div class="page">${backHead(w.name,`${w.exercises.length} упражнений`,`<button class="icon-btn" data-edit-workout="${w.id}">✎</button>`)}<button class="primary full" data-start="${w.id}">▶ Начать тренировку</button><h3 class="section-title">Упражнения</h3><div class="exercise-list">${w.exercises.map(id=>{let e=state.exercises.find(x=>x.id===id);return e?exRow(e):''}).join('')}</div><button class="danger-button" data-delete-workout="${w.id}">Удалить тренировку</button></div>`}
@@ -165,3 +165,81 @@ function bind(){
 }
 function bindPicker(){const pick=id=>{if(state.sheet==='active-picker'){let ex=state.exercises.find(e=>e.id===id);if(state.replaceIndex!=null){state.active.items[state.replaceIndex]={exercise:ex,sets:[{kg:'',reps:'',done:false},{kg:'',reps:'',done:false},{kg:'',reps:'',done:false}]};state.replaceIndex=null}else state.active.items.push({exercise:ex,sets:[{kg:'',reps:'',done:false},{kg:'',reps:'',done:false},{kg:'',reps:'',done:false}]});state.sheet=null}else{state.builder.exercises.push(id);state.sheet=null}render()};$$('[data-pick]').forEach(x=>x.onclick=()=>pick(x.dataset.pick));let ps=$('#picker-search');if(ps)ps.oninput=e=>{let q=e.target.value.toLowerCase();$('#picker-list').innerHTML=state.exercises.filter(ex=>(ex.name+' '+ex.muscle+' '+ex.equipment).toLowerCase().includes(q)).map(ex=>`<button class="exercise-row" data-pick="${ex.id}"><img src="${ex.media}"><div><h3>${esc(ex.name)}</h3><p>${esc(ex.muscle)} · ${esc(ex.equipment)}</p></div><b>＋</b></button>`).join('');$$('[data-pick]').forEach(x=>x.onclick=()=>pick(x.dataset.pick))}}
 render();
+
+
+// ===== Trainly v4: безопасная синхронизация каталога Lyfta через backend-proxy =====
+const RU_EXACT_NAMES = {
+  'Bench Press':'Жим штанги лёжа','Barbell Bench Press':'Жим штанги лёжа','Dumbbell Bench Press':'Жим гантелей лёжа',
+  'Incline Bench Press':'Жим штанги на наклонной скамье','Incline Dumbbell Press':'Жим гантелей на наклонной скамье',
+  'Deadlift':'Становая тяга','Romanian Deadlift':'Румынская тяга','Barbell Romanian Deadlift':'Румынская тяга со штангой',
+  'Full Squat':'Приседания со штангой','Barbell Squat':'Приседания со штангой','Front Squat':'Фронтальные приседания',
+  'Hip Thrust':'Ягодичный мост','Barbell Hip Thrust':'Ягодичный мост со штангой','Glute Bridge':'Ягодичный мост лёжа',
+  'Lat Pulldown':'Тяга верхнего блока к груди','Bar Lateral Pulldown':'Тяга верхнего блока к груди',
+  'Seated Cable Row':'Горизонтальная тяга блока сидя','Straight Back Seated Row':'Горизонтальная тяга блока сидя',
+  'Pull Up':'Подтягивания','Pull-up':'Подтягивания','Chin Up':'Подтягивания обратным хватом',
+  'Lateral Raise':'Разведения гантелей в стороны','Dumbbell Lateral Raise':'Разведения гантелей в стороны',
+  'Seated Shoulder Press':'Жим сидя над головой','Dumbbell Shoulder Press':'Жим гантелей сидя',
+  'Alternate Biceps Curl':'Попеременное сгибание рук с гантелями','Dumbbell Curl':'Сгибание рук с гантелями',
+  'Hammer Curl':'Молотковые сгибания с гантелями','Preacher Curl':'Сгибание рук на скамье Скотта',
+  'Triceps Pushdown':'Разгибание рук на верхнем блоке','Leg Press':'Жим ногами в тренажёре',
+  'Sled 45° Leg Press':'Жим ногами под углом 45°','Sled 45° Leg Wide Press':'Жим ногами под углом 45° с широкой постановкой',
+  'Leg Extension':'Разгибание ног в тренажёре','Lever Leg Extension':'Разгибание ног в тренажёре',
+  'Lying Leg Curl':'Сгибание ног лёжа в тренажёре','Seated Leg Curl':'Сгибание ног сидя в тренажёре',
+  'Calf Raise':'Подъёмы на носки','Standing Calf Raise':'Подъёмы на носки стоя','Plank':'Планка',
+  'Crunch':'Скручивания','Push-up':'Отжимания от пола','Push Up':'Отжимания от пола'
+};
+const RU_WORDS=[
+  [/\bbarbell\b/gi,'со штангой'],[/\bdumbbell\b/gi,'с гантелями'],[/\bcable\b/gi,'на блоке'],[/\blever\b/gi,'в тренажёре'],
+  [/\bmachine\b/gi,'в тренажёре'],[/\bseated\b/gi,'сидя'],[/\bstanding\b/gi,'стоя'],[/\blying\b/gi,'лёжа'],[/\bincline\b/gi,'на наклонной скамье'],
+  [/\bdecline\b/gi,'на скамье с отрицательным наклоном'],[/\bsingle arm\b/gi,'одной рукой'],[/\bone arm\b/gi,'одной рукой'],[/\bsingle leg\b/gi,'одной ногой']
+];
+function ruExerciseName(raw){
+  const n=String(raw||'').trim(); if(!n)return 'Упражнение'; if(RU_EXACT_NAMES[n])return RU_EXACT_NAMES[n];
+  // Для неизвестных названий не делаем опасный машинный перевод: оставляем оригинал и переводим только однозначные модификаторы.
+  let out=n; for(const [re,to] of RU_WORDS)out=out.replace(re,to); return out.trim();
+}
+function pick(o,keys){for(const k of keys){const v=o?.[k];if(v!==undefined&&v!==null&&v!=='')return v}return null}
+function textish(v){if(Array.isArray(v))return v.map(textish).filter(Boolean).join(', ');if(v&&typeof v==='object')return v.name||v.title||v.label||v.value||'';return String(v??'')}
+function inferMuscle(raw,name){
+  const src=(textish(pick(raw,['target_muscle','targetMuscle','Target_muscles_id','target_muscles','body_part','bodyPart','body_part_name']))+' '+name).toLowerCase();
+  const rules=[['Ягодицы',/glute|hip thrust|abduct/],['Квадрицепс',/quad|leg extension|squat|leg press/],['Бицепс бедра',/hamstring|leg curl|romanian/],['Икры',/calf/],['Грудь',/chest|bench press|push.?up|fly/],['Спина',/back|lat |pulldown|row|pull.?up|deadlift/],['Плечи',/shoulder|deltoid|lateral raise|front raise/],['Бицепс',/biceps|curl/],['Трицепс',/triceps|pushdown|skull/],['Пресс',/abs|abdominal|crunch|plank|core/],['Предплечья',/forearm|wrist/],['Шея',/neck|trap|shrug/],['Кардио',/cardio|run|walk|bike|treadmill|elliptical/]];
+  return rules.find(([,r])=>r.test(src))?.[0]||'Другое';
+}
+function inferEquipment(raw,name){
+  const src=(textish(pick(raw,['equipment','equipment_name','equipmentName','equipment_id']))+' '+name).toLowerCase();
+  if(/barbell/.test(src))return 'Штанга'; if(/dumbbell/.test(src))return 'Гантели'; if(/cable|pulley/.test(src))return 'Кроссовер';
+  if(/kettlebell/.test(src))return 'Гиря'; if(/band|resistance/.test(src))return 'Резинка'; if(/smith|lever|machine|sled/.test(src))return 'Тренажёр';
+  if(/bodyweight|body weight|assisted|pull.?up|push.?up|plank/.test(src))return 'Собственный вес'; if(/ez/.test(src))return 'EZ-штанга'; return 'Другое';
+}
+function resolveMedia(raw,fallback){
+  let v=pick(raw,['image_url','imageUrl','image','gif_url','gifUrl','gif','thumbnail','picture','image_name']); v=textish(v).trim();
+  if(!v)return fallback; if(/^https?:\/\//i.test(v)||/^data:/i.test(v))return v; if(v.startsWith('//'))return 'https:'+v;
+  if(v.startsWith('/'))return 'https://my.lyfta.app'+v; return 'https://my.lyfta.app/'+v.replace(/^\.\//,'');
+}
+function resolveVideo(raw,fallback){
+  let v=pick(raw,['video_url','videoUrl','video','animation_url','animationUrl','animation','gif_url','gifUrl','gif']); v=textish(v).trim();
+  if(!v)return fallback; if(/^https?:\/\//i.test(v)||/^data:/i.test(v))return v;if(v.startsWith('//'))return 'https:'+v;if(v.startsWith('/'))return 'https://my.lyfta.app'+v;return 'https://my.lyfta.app/'+v.replace(/^\.\//,'');
+}
+function normalizeLyfta(raw,index){
+  const original=textish(pick(raw,['name','exercise_name','excercise_name','title']))||`Exercise ${index+1}`;
+  const name=ruExerciseName(original),muscle=inferMuscle(raw,original),equipment=inferEquipment(raw,original);
+  const fallback=exerciseSvg(name,muscle,equipment);
+  const secondaryRaw=pick(raw,['synergist_muscles','Synergist_muscles_id','secondary_muscles','secondaryMuscles']);
+  return {id:'lyfta-'+String(pick(raw,['id','exercise_id','uuid','slug'])??index),lyftaId:pick(raw,['id','exercise_id','uuid','slug']),name,originalName:original,muscle,equipment,
+    type:muscle==='Кардио'?'Кардио':'Силовое',difficulty:'Средний',mechanics:'Базовое',secondary:textish(secondaryRaw)?textish(secondaryRaw).split(',').map(x=>x.trim()).filter(Boolean):[],
+    media:resolveMedia(raw,fallback),video:resolveVideo(raw,resolveMedia(raw,fallback)),instructions:[],source:'Lyfta'};
+}
+async function syncLyftaCatalog(){
+  const base=window.TRAINLY_CONFIG?.API_BASE?.replace(/\/$/,'');
+  if(!base||base.includes('YOUR-WORKER')){state.catalogStatus='Каталог Lyfta: нужно указать URL Worker в config.js';render();return}
+  try{
+    state.catalogStatus='Загружаю каталог Lyfta…';render();
+    const r=await fetch(base+'/api/library',{headers:{Accept:'application/json'}}); const data=await r.json();
+    if(!r.ok||!data.ok)throw new Error(data.detail||data.error||'Ошибка API');
+    const remote=(data.exercises||[]).map(normalizeLyfta); const customs=state.exercises.filter(e=>e.custom); const favs=new Set(JSON.parse(localStorage.getItem('trainly-favorites')||'[]'));
+    remote.forEach(e=>{if(favs.has(e.id))e.favorite=true});
+    const byId=new Map(); [...customs,...remote,...seeds].forEach(e=>{if(!byId.has(e.id))byId.set(e.id,e)}); state.exercises=[...byId.values()];
+    state.catalogCount=remote.length; state.catalogStatus=remote.length?`Каталог Lyfta подключён`:'Lyfta ответила, но упражнения не найдены'; render();
+  }catch(err){console.error(err);state.catalogStatus='Не удалось загрузить Lyfta: '+(err?.message||'ошибка');render()}
+}
+setTimeout(syncLyftaCatalog,0);

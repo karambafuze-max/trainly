@@ -2,7 +2,7 @@
   "name":"Trainly — тренировки",
   "short_name":"Trainly",
   "lang":"ru-RU",
-  "start_url":"./?v=3",
+  "start_url":"./?v=4",
   "display":"standalone",
   "background_color":"#f7f7f8",
   "theme_color":"#ffffff",
