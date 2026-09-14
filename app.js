@@ -468,3 +468,127 @@ bindPicker=function(){
 
 // Remove old demo content once real Lyfta data is available.
 function cleanupWorkouts(){const ids=new Set(state.exercises.map(e=>e.id));state.workouts=state.workouts.filter(w=>w.id!=='glutes').map(w=>({...w,exercises:(w.exercises||[]).filter(id=>ids.has(id))}))}
+
+// ===== Trainly v8: reliable exercise media, native round selectors, simple result history =====
+state.logDraftRows = state.logDraftRows || [];
+
+function v8SafeExerciseImage(e, cls='') {
+  // Use the exact image returned by Lyfta. Do not invent a high-resolution URL.
+  const src = e?.media || '';
+  return `<img class="${cls}" src="${esc(src)}" alt="${esc(e?.name||'Упражнение')}" loading="lazy" onerror="this.onerror=null;this.closest('.exercise-photo-frame')?.classList.add('media-failed');this.style.display='none'">`;
+}
+
+function v8ResultRowsHtml(){
+  const rows = state.logDraftRows?.length ? state.logDraftRows : [{id:'draft-'+Date.now(),date:new Date().toISOString().slice(0,10),kg:'',reps:''}];
+  state.logDraftRows = rows;
+  return rows.map((r,i)=>`<div class="result-entry" data-result-row="${i}">
+    <div class="result-entry-top"><strong>${i===0?'Результат':'Ещё один результат'}</strong>${rows.length>1?`<button class="remove-result-row" data-remove-result-row="${i}" aria-label="Удалить результат">−</button>`:''}</div>
+    <label>Дата<input type="date" data-log-row-date="${i}" value="${esc(r.date||'')}"></label>
+    <div class="result-values">
+      <label>Вес, кг<input inputmode="decimal" type="text" data-log-row-kg="${i}" value="${esc(r.kg??'')}" placeholder="60"></label>
+      <label>Повторения<input inputmode="numeric" type="text" data-log-row-reps="${i}" value="${esc(r.reps??'')}" placeholder="10"></label>
+    </div>
+  </div>`).join('');
+}
+
+const v8PrevSheet = sheet;
+sheet = function(){
+  if(state.sheet==='manual-log'){
+    const e=state.exercises.find(x=>x.id===state.logExerciseId);
+    if(!state.logDraftRows?.length) state.logDraftRows=[{id:'draft-'+Date.now(),date:new Date().toISOString().slice(0,10),kg:'',reps:''}];
+    return `<div class="sheet-backdrop" data-dismiss-sheet><div class="sheet result-sheet" data-sheet-body>
+      <div class="sheet-grab"></div>
+      <div class="sheet-title"><div><h2>Добавить результат</h2><p>${esc(e?.name||'')}</p></div><button data-close-sheet>×</button></div>
+      <p class="result-help">Добавь один или несколько прошлых результатов. Для каждого укажи дату, вес и повторения.</p>
+      <div id="result-rows">${v8ResultRowsHtml()}</div>
+      <button class="add-result-row" data-add-result-row>＋ Добавить ещё дату</button>
+      <button class="ios-primary full" data-save-result-history>Сохранить</button>
+    </div></div>`;
+  }
+  return v8PrevSheet();
+};
+
+exerciseDetail = function(e){
+  const logs=exerciseLogsFor(e.id), latest=logs[0];
+  const secondary=e.secondary?.length?`<div class="secondary-muscles">${e.secondary.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:`<p class="empty-secondary">Для этого упражнения дополнительные мышцы не указаны.</p>`;
+  const candidates=esc(JSON.stringify(e.videoCandidates||[]));
+  return `<div class="page detail-page">${backHead(e.name,e.muscle,`<button class="icon-btn ${e.favorite?'on':''}" data-favorite="${e.id}">${e.favorite?'★':'☆'}</button>`)}
+    <div class="tabs"><button class="${state.detailTab==='about'?'on':''}" data-detail-tab="about">Описание</button><button class="${state.detailTab==='history'?'on':''}" data-detail-tab="history">История</button><button class="${state.detailTab==='progress'?'on':''}" data-detail-tab="progress">Прогресс</button></div>
+    ${state.detailTab==='about'?`<div class="media-card exercise-photo-frame">${v8SafeExerciseImage(e)}<div class="media-placeholder"><span>Изображение недоступно</span></div><button class="media-toggle media-probe" data-media-probe data-photo="${esc(e.media||'')}" data-candidates='${candidates}' hidden>▶ Анимация</button></div>
+    <div class="info-grid"><div><span>Основная группа</span><strong>${esc(e.muscle)}</strong></div><div><span>Оборудование</span><strong>${esc(e.equipment)}</strong></div></div>
+    <h3 class="section-title">Основные мышцы</h3><div class="secondary-muscles">${(e.targetMuscles?.length?e.targetMuscles:[e.muscle]).map(x=>`<span>${esc(x)}</span>`).join('')}</div>
+    <h3 class="section-title">Дополнительно работают</h3>${secondary}
+    <button class="ios-secondary full" data-log-result="${e.id}">${latest?'Добавить ещё результат':'Добавить прошлый результат'}</button>
+    <button class="ios-primary full" data-add-ex-to-workout="${e.id}">＋ Добавить в тренировку</button>`:
+    state.detailTab==='history'?`<h3 class="section-title">История результатов</h3>${logs.length?logs.map(x=>`<div class="history-card"><div><button class="text-danger" data-delete-log="${x.id}">Удалить</button><div><h3>${esc(prettyLog(x))}</h3><span>${esc(x.date)}</span></div></div></div>`).join(''):'<div class="empty">Истории пока нет.</div>'}`:
+    `<div class="progress-hero"><span>ПОСЛЕДНИЙ РЕЗУЛЬТАТ</span><strong>${latest?esc(prettyLog(latest)):'—'}</strong><p>${latest?esc(latest.date):'Добавь первый результат'}</p></div>`}
+  </div>`;
+};
+
+workoutDetail = function(w){
+  return `<div class="page">${backHead(w.name,`${w.exercises.length} упражнений`,`<button class="icon-btn" data-edit-workout="${w.id}" aria-label="Редактировать">⋯</button>`)}
+    <button class="ios-primary full" data-start="${w.id}">▶ Начать тренировку</button>
+    <h3 class="section-title">Упражнения</h3>
+    <p class="section-help">Сразу видно последний результат. Нажми «＋», чтобы добавить новую дату, вес и повторения без запуска тренировки.</p>
+    ${w.exercises.map(id=>{const e=state.exercises.find(x=>x.id===id);if(!e)return'';const last=latestExerciseLog(id);return `<section class="workout-preview-card"><div class="workout-preview-head">${v8SafeExerciseImage(e)}<div><h3>${esc(e.name)}</h3><p>${esc(e.muscle)} · ${esc(e.equipment)}</p></div><button class="icon-btn" data-ex="${e.id}" aria-label="Описание">›</button></div><div class="last-result-line">${last?`<div><span>${esc(last.date)}</span><strong>${esc(prettyLog(last))}</strong></div>`:'<span>Результатов ещё нет</span>'}<button class="add-inline-result" data-log-result="${e.id}" aria-label="Добавить результат">＋</button></div></section>`}).join('')}
+    <button class="ios-secondary full" data-edit-workout="${w.id}">Изменить тренировку</button>
+    <button class="danger-button" data-delete-workout="${w.id}">Удалить тренировку</button>
+  </div>`;
+};
+
+// Preserve picker behavior but enforce a true circular selector.
+const v8OldPickerRows = pickerRows;
+pickerRows = function(q=''){
+  const sel=new Set(state.pickerSelected||[]), query=q.toLowerCase();
+  return state.exercises.filter(e=>!query||(e.name+' '+(e.originalName||'')+' '+e.muscle+' '+e.equipment).toLowerCase().includes(query)).slice(0,350).map(e=>`<div class="picker-row"><button type="button" class="picker-radio ${sel.has(e.id)?'on':''}" data-picker-toggle="${e.id}" aria-label="${sel.has(e.id)?'Убрать выбор':'Выбрать'}"><span></span></button>${v8SafeExerciseImage(e)}<div data-picker-open="${e.id}"><h3>${esc(e.name)}</h3><p>${esc(e.muscle)} · ${esc(e.equipment)}</p></div><button class="picker-open" data-picker-open="${e.id}" aria-label="Описание">›</button></div>`).join('');
+};
+
+const v8PrevBind = bind;
+bind = function(){
+  v8PrevBind();
+
+  // Start every manual history flow with a clean row.
+  $$('[data-log-result]').forEach(btn=>btn.addEventListener('click',()=>{
+    state.logDraftRows=[{id:'draft-'+Date.now(),date:new Date().toISOString().slice(0,10),kg:'',reps:''}];
+  },{once:true}));
+
+  $('[data-add-result-row]')?.addEventListener('click',()=>{
+    // sync current values before adding a row
+    state.logDraftRows=(state.logDraftRows||[]).map((r,i)=>({...r,date:$(`[data-log-row-date="${i}"]`)?.value||r.date,kg:$(`[data-log-row-kg="${i}"]`)?.value??r.kg,reps:$(`[data-log-row-reps="${i}"]`)?.value??r.reps}));
+    state.logDraftRows.push({id:'draft-'+Date.now(),date:new Date().toISOString().slice(0,10),kg:'',reps:''});
+    render();
+  });
+  $$('[data-remove-result-row]').forEach(btn=>btn.addEventListener('click',()=>{
+    const i=+btn.dataset.removeResultRow;
+    if(confirm('Удалить этот результат из формы?')){state.logDraftRows.splice(i,1);render()}
+  }));
+  $('[data-save-result-history]')?.addEventListener('click',()=>{
+    const rows=(state.logDraftRows||[]).map((r,i)=>({
+      date:$(`[data-log-row-date="${i}"]`)?.value||'',
+      kg:parseFloat(String($(`[data-log-row-kg="${i}"]`)?.value||'').replace(',','.'))||0,
+      reps:parseInt($(`[data-log-row-reps="${i}"]`)?.value||'0')||0
+    })).filter(r=>r.date&&(r.kg||r.reps));
+    if(!rows.length){alert('Добавь хотя бы один результат: дату и вес или повторения.');return}
+    const now=Date.now();
+    rows.forEach((r,i)=>state.exerciseLogs.unshift({id:'l'+now+'-'+i,exerciseId:state.logExerciseId,date:r.date,kg:r.kg,reps:r.reps,sets:1,source:'manual'}));
+    state.logDraftRows=[];state.sheet=null;render();
+  });
+
+  // Probe candidate GIFs silently. Show the animation control only if a real image loads.
+  const probe=$('[data-media-probe]');
+  if(probe){
+    let candidates=[];try{candidates=JSON.parse(probe.dataset.candidates||'[]')}catch{}
+    const photo=probe.dataset.photo;let idx=0,working='';
+    const testNext=()=>{
+      if(idx>=candidates.length){probe.hidden=true;return}
+      const tester=new Image();const url=candidates[idx++];
+      tester.onload=()=>{working=url;probe.hidden=false;probe.dataset.gif=working};
+      tester.onerror=testNext;tester.src=url;
+    };testNext();
+    probe.addEventListener('click',()=>{
+      const img=$('.media-card img');if(!img||!probe.dataset.gif)return;
+      if(probe.dataset.mode==='gif'){img.src=photo;probe.dataset.mode='photo';probe.textContent='▶ Анимация'}
+      else{img.style.display='block';img.src=probe.dataset.gif;probe.dataset.mode='gif';probe.textContent='▣ Фото'}
+    });
+  }
+};
