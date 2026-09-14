@@ -1,19 +1,14 @@
-TRAINLY v4 — подключение каталога Lyfta
+TRAINLY PWA v6
 
-ВАЖНО: API-ключ Lyfta нельзя добавлять в app.js/config.js/GitHub.
-Он хранится только как secret в Cloudflare Worker.
+1. Upload all files/folders from this directory to the root of your GitHub Pages repository.
+2. config.js is already configured for:
+   https://trainly-lyfta-api.karambafuze.workers.dev
+3. Cloudflare Worker must contain worker/worker.js and have Secret:
+   LYFTA_API_KEY = your Lyfta API key
+4. The app loads the whole Lyfta catalog in batches of 100, respecting the 60 requests/minute limit.
+   First full sync can take about 1.5 minutes. The app caches the normalized catalog locally for 24 hours when browser storage allows.
+5. v6 no longer mixes the old built-in demo exercises into the Lyfta catalog.
+6. Manual results can be added from an exercise page without starting a workout.
+7. Exercise order in workout editor can be changed by dragging the ≡ handle.
 
-1. Создай Cloudflare Worker и загрузи содержимое worker/worker.js.
-2. В Settings -> Variables and Secrets добавь secret:
-   LYFTA_API_KEY = твой ключ Lyfta
-3. Deploy.
-4. Скопируй адрес Worker, например:
-   https://trainly-lyfta-api.username.workers.dev
-5. Открой config.js и замени:
-   https://YOUR-WORKER.workers.dev
-   на свой URL.
-6. Загрузи все файлы Trainly v4 в GitHub Pages.
-7. Открой Worker URL + /health — должно быть {"ok":true,"configured":true}.
-8. Открой Worker URL + /api/library — должен вернуться JSON каталога Lyfta.
-
-Приложение не копирует API key или изображения в GitHub. Оно отображает медиа, которые API Lyfta возвращает/ссылает на них.
+If an old PWA version remains on iPhone, remove the Home Screen icon and open the GitHub Pages URL in Safari once, then add it to Home Screen again.
