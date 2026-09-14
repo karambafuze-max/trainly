@@ -363,3 +363,108 @@ async function syncLyftaCatalog(){
   }catch(err){console.error(err);state.catalogLoading=false;state.catalogStatus='Не удалось загрузить Lyfta: '+(err?.message||'ошибка');render()}
 }
 function cleanupWorkouts(){const ids=new Set(state.exercises.map(e=>e.id));state.workouts=state.workouts.map(w=>({...w,exercises:(w.exercises||[]).filter(id=>ids.has(id))})).filter(w=>w.id!=='glutes'||w.exercises.length);}
+
+
+// ===== Trainly v7: media, picker, workout previews, safer deletion =====
+state.pickerSelected = state.pickerSelected || [];
+state.pickerContext = state.pickerContext || null;
+state.returnToPicker = state.returnToPicker || false;
+state.reorderedIndex = null;
+
+const V7_WORDS = [
+  [/\bbent over\b/gi,'в наклоне'],[/\bwide grip\b/gi,'широким хватом'],[/\bclose grip\b/gi,'узким хватом'],[/\breverse grip\b/gi,'обратным хватом'],[/\bneutral grip\b/gi,'нейтральным хватом'],[/\bpronated grip\b/gi,'прямым хватом'],[/\bsupinated grip\b/gi,'обратным хватом'],
+  [/\bback extension\b/gi,'гиперэкстензия'],[/\bgood morning\b/gi,'наклоны «Доброе утро»'],[/\bupright row\b/gi,'тяга к подбородку'],[/\bface pull\b/gi,'тяга каната к лицу'],[/\bstraight arm pulldown\b/gi,'тяга верхнего блока прямыми руками'],[/\bpullover\b/gi,'пуловер'],[/\brear delt\b/gi,'задняя дельта'],[/\bpec deck\b/gi,'сведение рук в тренажёре'],
+  [/\bfront squat\b/gi,'фронтальные приседания'],[/\bgoblet squat\b/gi,'гоблет-приседания'],[/\bsplit squat\b/gi,'сплит-приседания'],[/\bbulgarian split squat\b/gi,'болгарские выпады'],[/\bstep up\b/gi,'зашагивания на платформу'],[/\bwalking lunge\b/gi,'выпады в ходьбе'],[/\breverse lunge\b/gi,'выпады назад'],[/\bside lunge\b/gi,'боковые выпады'],
+  [/\bhip abduction\b/gi,'отведение бедра'],[/\bhip adduction\b/gi,'приведение бедра'],[/\bkickback\b/gi,'отведение ноги назад'],[/\bcalf press\b/gi,'жим носками'],[/\bseated calf raise\b/gi,'подъёмы на носки сидя'],[/\bstanding calf raise\b/gi,'подъёмы на носки стоя'],
+  [/\bpreacher curl\b/gi,'сгибание рук на скамье Скотта'],[/\bconcentration curl\b/gi,'концентрированные сгибания'],[/\bhammer curl\b/gi,'молотковые сгибания'],[/\bskull crusher\b/gi,'французский жим лёжа'],[/\boverhead triceps extension\b/gi,'разгибание рук из-за головы'],[/\btriceps dip\b/gi,'отжимания на брусьях на трицепс'],
+  [/\bhanging leg raise\b/gi,'подъём ног в висе'],[/\bleg raise\b/gi,'подъём ног'],[/\brussian twist\b/gi,'русские скручивания'],[/\bside plank\b/gi,'боковая планка'],[/\bdead bug\b/gi,'«Мёртвый жук»'],[/\bbird dog\b/gi,'«Птица-собака»'],
+  [/\bfarmer.?s walk\b/gi,'фермерская прогулка'],[/\bwalking\b/gi,'ходьба'],[/\brunning\b/gi,'бег'],[/\bsprint\b/gi,'спринт'],[/\bjump rope\b/gi,'прыжки на скакалке'],[/\bhigh knees\b/gi,'бег с высоким подниманием коленей'],[/\bburpee\b/gi,'бёрпи']
+];
+const V7_SINGLE = {
+  'lat':'широчайших','over':'над','under':'под','rear':'задний','front':'передний','side':'боковой','upper':'верхний','lower':'нижний','horizontal':'горизонтальная','vertical':'вертикальная',
+  'rope':'канатом','handle':'рукоятью','bar':'грифом','bench':'скамье','floor':'пола','kneeling':'на коленях','supported':'с опорой','assisted':'с поддержкой','alternating':'попеременный','alternatingly':'попеременно',
+  'raise':'подъём','raises':'подъёмы','press':'жим','pull':'тяга','push':'жим','extension':'разгибание','curl':'сгибание','rotation':'вращение','twist':'повороты','fly':'сведение','row':'тяга','squat':'приседания','lunge':'выпады','jump':'прыжок','walk':'ходьба','stretch':'растяжка','drill':'упражнение'
+};
+function ruExerciseName(raw){
+  const original=String(raw||'').trim(); if(!original) return 'Упражнение'; if(V6_EXACT[original]) return V6_EXACT[original];
+  let out=original; for(const [re,to] of [...V7_WORDS,...V6_PHRASES]) out=out.replace(re,to); out=out.replace(/\((male|female)\)/gi,'').replace(/\s+/g,' ').trim();
+  out=out.split(/(\s+|[-/])/).map(tok=>{const k=tok.toLowerCase();return V7_SINGLE[k]||tok}).join('').replace(/\s+/g,' ').trim();
+  if(/[A-Za-z]{3,}/.test(out)){
+    // Avoid half-English labels in the UI: keep a readable Russian category if terminology is unknown.
+    const base=inferMuscle({},original); const eq=inferEquipment({},original); return `${base}: упражнение${eq&&eq!=='Другое'?' ('+eq.toLowerCase()+')':''}`;
+  }
+  return out.charAt(0).toUpperCase()+out.slice(1);
+}
+function lyftaGifCandidates(url){
+  const u=String(url||''); if(!u)return [];
+  const noSmall=u.replace(/_small(?=\.png(?:$|\?))/i,'');
+  const base=noSmall.replace('/GymvisualPNG/','/GymvisualGIF/');
+  return [...new Set([
+    base.replace(/\.png(?:$|\?)/i,'.gif'),
+    u.replace('/GymvisualPNG/','/GymvisualGIF/').replace(/_small\.png(?:$|\?)/i,'.gif'),
+    noSmall.replace(/\.png(?:$|\?)/i,'.gif')
+  ])];
+}
+function normalizeLyfta(raw,index){
+  const original=textish(pick(raw,['name','exercise_name','excercise_name','title']))||`Exercise ${index+1}`;
+  const targetIds=parseIdList(raw.Target_muscles_id), secondaryIds=parseIdList(raw.Synergist_muscles_id), bodyIds=parseIdList(raw.body_part_id), equipmentIds=parseIdList(raw.equipment_id);
+  const name=ruExerciseName(original),muscle=groupFromTargets(targetIds,bodyIds,original),equipment=equipmentIds.map(i=>LYFTA_EQUIPMENT_RU[i]).filter(Boolean).join(', ')||'Другое';
+  const image=resolveMedia(raw,'');
+  return {id:'lyfta-'+String(pick(raw,['id','exercise_id','uuid','slug'])??index),lyftaId:String(pick(raw,['id','exercise_id','uuid','slug'])??''),name,originalName:original,muscle,equipment,
+    bodyParts:bodyIds.map(i=>LYFTA_BODY_RU[i]).filter(Boolean),targetMuscles:targetIds.map(i=>LYFTA_MUSCLE_RU[i]).filter(Boolean),secondary:secondaryIds.map(i=>LYFTA_MUSCLE_RU[i]).filter(Boolean),
+    type:raw.exercise_type==='duration'?'По времени':raw.exercise_type==='weight_reps'?'Вес × повторения':'Повторения',difficulty:'Не указано',mechanics:'Не указано',
+    media:image||'',mediaLarge:highResLyfta(image)||image,videoCandidates:lyftaGifCandidates(image),video:'',instructions:[],source:'Lyfta'};
+}
+function imgTag(e,cls='',detail=false){const src=detail?(e.mediaLarge||e.media):e.media;return `<img class="${cls}" src="${esc(src)}" alt="${esc(e.name)}" loading="lazy" onerror="this.onerror=null;this.style.opacity='.18'">`}
+function exCard(e){return `<article class="exercise-card"><button class="card-favorite ${e.favorite?'on':''}" data-card-favorite="${e.id}" aria-label="Избранное">${e.favorite?'★':'☆'}</button><button class="card-main" data-ex="${e.id}"><div class="card-media">${imgTag(e)}</div><div class="card-copy"><h3>${esc(e.name)}${e.custom?'<span class="badge">Моё</span>':''}</h3><p>${esc(e.muscle)} · ${esc(e.equipment)}</p></div><span class="ios-chevron">›</span></button></article>`}
+
+function exerciseDetail(e){
+  const logs=exerciseLogsFor(e.id),latest=logs[0],gif=(e.videoCandidates||[])[0]||'';
+  const secondary=e.secondary?.length?`<div class="secondary-muscles">${e.secondary.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:`<p class="empty-secondary">Дополнительные мышцы не указаны для этого упражнения.</p>`;
+  return `<div class="page detail-page">${backHead(e.name,e.muscle,`<button class="icon-btn ${e.favorite?'on':''}" data-favorite="${e.id}">${e.favorite?'★':'☆'}</button>`)}<div class="tabs"><button class="${state.detailTab==='about'?'on':''}" data-detail-tab="about">Описание</button><button class="${state.detailTab==='history'?'on':''}" data-detail-tab="history">История</button><button class="${state.detailTab==='progress'?'on':''}" data-detail-tab="progress">Прогресс</button></div>${state.detailTab==='about'?`<div class="media-card">${imgTag(e,'',true)}<button class="media-toggle" data-toggle-media data-photo="${esc(e.mediaLarge||e.media)}" data-candidates='${esc(JSON.stringify(e.videoCandidates||[]))}' data-mode="photo">▶ Анимация</button></div><div class="info-grid"><div><span>Основная группа</span><strong>${esc(e.muscle)}</strong></div><div><span>Оборудование</span><strong>${esc(e.equipment)}</strong></div></div><h3 class="section-title">Основные мышцы</h3><div class="secondary-muscles">${(e.targetMuscles?.length?e.targetMuscles:[e.muscle]).map(x=>`<span>${esc(x)}</span>`).join('')}</div><h3 class="section-title">Дополнительно работают</h3>${secondary}<h3 class="section-title">Техника выполнения</h3>${e.instructions?.length?`<ol class="steps">${e.instructions.map((x,i)=>`<li><span>${i+1}</span><p>${esc(x)}</p></li>`).join('')}</ol>`:'<div class="empty">Подробная техника для этого упражнения пока не добавлена.</div>'}<button class="ios-secondary full" data-log-result="${e.id}">${latest?'Изменить / добавить результат':'Записать прошлый результат'}</button><button class="ios-primary full" data-add-ex-to-workout="${e.id}">＋ Добавить в тренировку</button>`:state.detailTab==='history'?`<h3 class="section-title">История результатов</h3>${logs.length?logs.map(x=>`<div class="history-card"><div><button class="text-danger" data-delete-log="${x.id}">Удалить</button><div><h3>${esc(prettyLog(x))}</h3><span>${esc(x.date)}</span></div></div></div>`).join(''):'<div class="empty">Истории пока нет.</div>'}`:`<div class="progress-hero"><span>ПОСЛЕДНИЙ РЕЗУЛЬТАТ</span><strong>${latest?esc(prettyLog(latest)):'—'}</strong><p>${latest?esc(latest.date):'Добавь первый результат'}</p></div>`}</div>`;
+}
+
+function workoutDetail(w){return `<div class="page">${backHead(w.name,`${w.exercises.length} упражнений`,`<button class="icon-btn" data-edit-workout="${w.id}" aria-label="Редактировать">⋯</button>`)}<button class="ios-primary full" data-start="${w.id}">▶ Начать тренировку</button><h3 class="section-title">Упражнения и последние результаты</h3>${w.exercises.map(id=>{const e=state.exercises.find(x=>x.id===id);if(!e)return'';const last=latestExerciseLog(id)||{};return `<section class="workout-preview-card"><div class="workout-preview-head">${imgTag(e)}<div><h3>${esc(e.name)}</h3><p>${esc(e.muscle)} · ${esc(e.equipment)}</p></div><button class="icon-btn" data-ex="${e.id}" aria-label="Описание">›</button></div><div class="workout-preview-grid"><div><label>ДАТА</label><input type="date" data-preview-date="${e.id}" value="${esc(last.date||'')}"></div><div><label>КГ</label><input inputmode="decimal" data-preview-kg="${e.id}" value="${esc(last.kg??'')}"></div><div><label>ПОВТ.</label><input inputmode="numeric" data-preview-reps="${e.id}" value="${esc(last.reps??'')}"></div></div><div class="small-date">${last.date?`Последний результат: ${esc(prettyLog(last))}`:'Результат ещё не записан'}</div><button class="ios-secondary full" data-save-preview="${e.id}">Сохранить результат</button></section>`}).join('')}<button class="ios-secondary full" data-edit-workout="${w.id}">Изменить тренировку</button><button class="danger-button" data-delete-workout="${w.id}">Удалить тренировку</button></div>`}
+
+function builder(){let b=state.builder;return `<div class="page builder">${backHead(b._new?'Новая тренировка':'Редактирование','',`<button class="save-text" data-save-builder>Готово</button>`)}<label class="field-label">Название</label><input id="workout-name" class="big-input" value="${esc(b.name)}" placeholder="Например, Ноги и ягодицы"><div class="builder-section-head"><h3>Упражнения</h3><span>${b.exercises.length}</span></div>${b.exercises.length?`<div class="stack sortable-builder">${b.exercises.map((id,i)=>{let e=state.exercises.find(x=>x.id===id);let last=e?latestExerciseLog(e.id):null;return `<div class="builder-row ios-builder-row ${state.reorderedIndex===i?'just-moved':''}" data-builder-index="${i}"><button class="drag-handle" data-drag-index="${i}" aria-label="Перетащить">≡</button>${e?imgTag(e):''}<div><strong>${esc(e?.name||'Упражнение')}</strong><span>${last?`${esc(prettyLog(last))} · ${esc(last.date)}`:esc(e?.muscle||'')}</span></div><button class="remove-circle" data-remove-builder="${i}" aria-label="Удалить">−</button></div>`}).join('')}</div><p class="drag-hint">Зажми ≡ и перетащи. После перемещения строка подсветится.</p>`:'<div class="empty">Добавь первое упражнение.</div>'}<button class="ios-secondary full" data-open-picker>＋ Добавить упражнение</button></div>`}
+
+function pickerRows(q=''){
+  const sel=new Set(state.pickerSelected||[]); const query=q.toLowerCase();
+  return state.exercises.filter(e=>!query||(e.name+' '+e.originalName+' '+e.muscle+' '+e.equipment).toLowerCase().includes(query)).slice(0,350).map(e=>`<div class="picker-row"><button class="picker-radio ${sel.has(e.id)?'on':''}" data-picker-toggle="${e.id}" aria-label="Выбрать"></button>${imgTag(e)}<div data-picker-open="${e.id}"><h3>${esc(e.name)}</h3><p>${esc(e.muscle)} · ${esc(e.equipment)}</p></div><button class="picker-open" data-picker-open="${e.id}" aria-label="Описание">›</button></div>`).join('');
+}
+const v7OldSheet=sheet;
+sheet=function(){
+  if(state.sheet==='picker'||state.sheet==='active-picker')return `<div class="sheet-backdrop" data-dismiss-sheet><div class="sheet picker-sheet" data-sheet-body><div class="sheet-grab"></div><div class="sheet-title"><h2>${state.sheet==='active-picker'?'Добавить упражнения':'Добавить упражнения'}</h2><button data-close-sheet>×</button></div><div class="searchbox"><b>⌕</b><input id="picker-search" placeholder="Поиск по каталогу"></div><div id="picker-list" class="picker-list">${pickerRows('')}</div><div class="picker-footer"><button class="ghost dark" data-close-sheet>Отмена</button><button class="primary dark" data-picker-confirm>Добавить (${(state.pickerSelected||[]).length})</button></div></div></div>`;
+  return v7OldSheet();
+}
+
+const v7OldGlobalBack=globalBack;
+globalBack=function(){if(state.selectedExercise&&state.returnToPicker){state.selectedExercise=null;state.returnToPicker=false;state.sheet=state.pickerContext||'picker';render();return}v7OldGlobalBack()}
+
+const v7OldBind=bind;
+bind=function(){
+  v7OldBind();
+  $$('[data-ex]').forEach(x=>x.onclick=()=>{state.selectedExercise=state.exercises.find(e=>e.id===x.dataset.ex);state.detailTab='about';render();requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'instant'}))});
+  $$('[data-remove-builder]').forEach(x=>x.onclick=()=>{if(confirm('Удалить это упражнение из тренировки?')){state.builder.exercises.splice(+x.dataset.removeBuilder,1);render()}});
+  $$('[data-delete-log]').forEach(x=>x.onclick=()=>{if(confirm('Удалить этот результат?')){state.exerciseLogs=state.exerciseLogs.filter(l=>l.id!==x.dataset.deleteLog);render()}});
+  $$('[data-remove-active]').forEach(x=>x.onclick=()=>{if(confirm('Удалить это упражнение из текущей тренировки?')){state.active.items.splice(+x.dataset.removeActive,1);state.sheet=null;render()}});
+  $$('[data-drag-index]').forEach(handle=>{let start=null;handle.onpointerdown=e=>{start=+handle.dataset.dragIndex;handle.setPointerCapture?.(e.pointerId);handle.closest('.builder-row')?.classList.add('dragging')};handle.onpointermove=e=>{$$('.builder-row').forEach(r=>r.classList.remove('drag-target'));document.elementFromPoint(e.clientX,e.clientY)?.closest?.('[data-builder-index]')?.classList.add('drag-target')};handle.onpointerup=e=>{const row=document.elementFromPoint(e.clientX,e.clientY)?.closest?.('[data-builder-index]');$$('.builder-row').forEach(r=>r.classList.remove('drag-target','dragging'));if(start!=null&&row){const end=+row.dataset.builderIndex;if(end!==start){const [id]=state.builder.exercises.splice(start,1);state.builder.exercises.splice(end,0,id);state.reorderedIndex=end;render();setTimeout(()=>state.reorderedIndex=null,700)}}start=null}});
+  $('[data-toggle-media]')?.addEventListener('click',async e=>{const img=$('.media-card img');const btn=e.currentTarget;const photo=btn.dataset.photo;let candidates=[];try{candidates=JSON.parse(btn.dataset.candidates||'[]')}catch{};if(btn.dataset.mode==='gif'){img.src=photo;btn.dataset.mode='photo';btn.textContent='▶ Анимация';return}let i=0;const tryNext=()=>{if(i>=candidates.length){img.onerror=null;img.src=photo;alert('Для этого упражнения анимация недоступна.');return}img.onerror=()=>{i++;tryNext()};img.onload=()=>{img.onerror=null;btn.dataset.mode='gif';btn.textContent='▣ Фото'};img.src=candidates[i]};tryNext()});
+  $$('[data-save-preview]').forEach(x=>x.onclick=()=>{const id=x.dataset.savePreview;const kg=parseFloat($(`[data-preview-kg="${id}"]`)?.value||0),reps=parseInt($(`[data-preview-reps="${id}"]`)?.value||0),date=$(`[data-preview-date="${id}"]`)?.value||new Date().toISOString().slice(0,10);if(!kg&&!reps)return alert('Укажи вес или повторения');state.exerciseLogs.unshift({id:'l'+Date.now(),exerciseId:id,date,kg,reps,sets:1,source:'manual'});render()});
+  $('[data-open-picker]')?.addEventListener('click',()=>{state.pickerSelected=[];state.pickerContext='picker';state.sheet='picker';render()});
+  $('[data-add-active-ex]')?.addEventListener('click',()=>{state.pickerSelected=[];state.pickerContext='active-picker';state.sheet='active-picker';render()});
+  bindPicker();
+}
+
+bindPicker=function(){
+  const refresh=()=>{const q=$('#picker-search')?.value||'';const list=$('#picker-list');if(list)list.innerHTML=pickerRows(q);bindPickerRows();const b=$('[data-picker-confirm]');if(b)b.textContent=`Добавить (${(state.pickerSelected||[]).length})`};
+  const bindPickerRows=()=>{
+    $$('[data-picker-toggle]').forEach(x=>x.onclick=()=>{const id=x.dataset.pickerToggle,a=state.pickerSelected||[];const i=a.indexOf(id);i>=0?a.splice(i,1):a.push(id);refresh()});
+    $$('[data-picker-open]').forEach(x=>x.onclick=()=>{state.returnToPicker=true;state.pickerContext=state.sheet;state.selectedExercise=state.exercises.find(e=>e.id===x.dataset.pickerOpen);state.sheet=null;state.detailTab='about';render();requestAnimationFrame(()=>window.scrollTo({top:0,behavior:'instant'}))});
+  };
+  bindPickerRows(); const ps=$('#picker-search');if(ps)ps.oninput=refresh;
+  $('[data-picker-confirm]')?.addEventListener('click',()=>{const ids=[...(state.pickerSelected||[])];if(!ids.length)return; if(state.pickerContext==='active-picker'){for(const id of ids){const ex=state.exercises.find(e=>e.id===id);if(ex)state.active.items.push({exercise:ex,previous:latestExerciseLog(id),sets:[{kg:'',reps:'',done:false},{kg:'',reps:'',done:false},{kg:'',reps:'',done:false}]})}}else{for(const id of ids)if(!state.builder.exercises.includes(id))state.builder.exercises.push(id)}state.pickerSelected=[];state.sheet=null;render()});
+}
+
+// Remove old demo content once real Lyfta data is available.
+function cleanupWorkouts(){const ids=new Set(state.exercises.map(e=>e.id));state.workouts=state.workouts.filter(w=>w.id!=='glutes').map(w=>({...w,exercises:(w.exercises||[]).filter(id=>ids.has(id))}))}
