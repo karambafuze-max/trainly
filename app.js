@@ -758,7 +758,7 @@ bind = function(){
   exerciseDetail = function(e){
     const logs=exerciseLogsFor(e.id), latest=logs[0];
     const secondary=e.secondary?.length?`<div class="secondary-muscles">${e.secondary.map(x=>`<span>${esc(x)}</span>`).join('')}</div>`:`<p class="empty-secondary">Дополнительные мышцы для этого упражнения не указаны.</p>`;
-    return `<div class="page detail-page">${backHead(e.name,e.muscle,`<button class="icon-btn ${e.favorite?'on':''}" data-favorite="${e.id}">${e.favorite?'★':'☆'}</button>`)}${e.originalName?`<div class="exercise-alias">Оригинал Lyfta: ${esc(e.originalName)}</div>`:''}<div class="tabs"><button class="${state.detailTab==='about'?'on':''}" data-detail-tab="about">Описание</button><button class="${state.detailTab==='history'?'on':''}" data-detail-tab="history">История</button><button class="${state.detailTab==='progress'?'on':''}" data-detail-tab="progress">Прогресс</button></div>${state.detailTab==='about'?`<div class="media-card exercise-photo-frame">${v8SafeExerciseImage(e)}<div class="media-placeholder"><span>Изображение недоступно</span></div></div>${movementGuide(e)}<div class="info-grid"><div><span>Основная группа</span><strong>${esc(e.muscle)}</strong></div><div><span>Оборудование</span><strong>${esc(e.equipment)}</strong></div></div><h3 class="section-title">Основные мышцы</h3><div class="secondary-muscles">${(e.targetMuscles?.length?e.targetMuscles:[e.muscle]).map(x=>`<span>${esc(x)}</span>`).join('')}</div><h3 class="section-title">Дополнительно работают</h3>${secondary}<button class="ios-secondary full" data-log-result="${e.id}">＋ Добавить прошлый результат</button><button class="ios-primary full" data-add-ex-to-workout="${e.id}">＋ Добавить в тренировку</button>`:state.detailTab==='history'?`<h3 class="section-title">Все результаты</h3>${logs.length?logs.map(x=>`<div class="result-history-card"><div class="result-history-top"><div><strong>${esc(x.date)}</strong><small>${x.source==='workout'?'Тренировка':'Добавлено вручную'}</small></div><button class="text-danger" data-delete-log="${x.id}">Удалить</button></div><div class="set-history">${logSetPreview(x)}</div></div>`).join(''):'<div class="empty">Истории пока нет.</div>'}`:`<div class="progress-hero"><span>ПОСЛЕДНЯЯ ТРЕНИРОВКА</span><strong>${latest?esc(prettyLog(latest)):'—'}</strong><p>${latest?esc(latest.date):'Добавь первый результат'}</p></div>`}</div>`;
+    return `<div class="page detail-page">${backHead(e.name,e.muscle,`<button class="icon-btn ${e.favorite?'on':''}" data-favorite="${e.id}">${e.favorite?'★':'☆'}</button>`)}${e.originalName?`<div class="exercise-alias">Оригинал Lyfta: ${esc(e.originalName)}</div>`:''}<div class="tabs"><button class="${state.detailTab==='about'?'on':''}" data-detail-tab="about">Описание</button><button class="${state.detailTab==='history'?'on':''}" data-detail-tab="history">История</button><button class="${state.detailTab==='progress'?'on':''}" data-detail-tab="progress">Прогресс</button></div>${state.detailTab==='about'?`<div class="media-card exercise-photo-frame">${v8SafeExerciseImage(e)}<div class="media-placeholder"><span>Изображение недоступно</span></div></div>${realGuideShell(e)}<div class="info-grid"><div><span>Основная группа</span><strong>${esc(e.muscle)}</strong></div><div><span>Оборудование</span><strong>${esc(e.equipment)}</strong></div></div><h3 class="section-title">Основные мышцы</h3><div class="secondary-muscles">${(e.targetMuscles?.length?e.targetMuscles:[e.muscle]).map(x=>`<span>${esc(x)}</span>`).join('')}</div><h3 class="section-title">Дополнительно работают</h3>${secondary}<button class="ios-secondary full" data-log-result="${e.id}">＋ Добавить прошлый результат</button><button class="ios-primary full" data-add-ex-to-workout="${e.id}">＋ Добавить в тренировку</button>`:state.detailTab==='history'?`<h3 class="section-title">Все результаты</h3>${logs.length?logs.map(x=>`<div class="result-history-card"><div class="result-history-top"><div><strong>${esc(x.date)}</strong><small>${x.source==='workout'?'Тренировка':'Добавлено вручную'}</small></div><button class="text-danger" data-delete-log="${x.id}">Удалить</button></div><div class="set-history">${logSetPreview(x)}</div></div>`).join(''):'<div class="empty">Истории пока нет.</div>'}`:`<div class="progress-hero"><span>ПОСЛЕДНЯЯ ТРЕНИРОВКА</span><strong>${latest?esc(prettyLog(latest)):'—'}</strong><p>${latest?esc(latest.date):'Добавь первый результат'}</p></div>`}</div>`;
   };
 
   workoutDetail = function(w){
@@ -821,4 +821,43 @@ bind = function(){
     $$('[data-v9-remove-row]').forEach(btn=>btn.addEventListener('click',()=>{const i=+btn.dataset.v9RemoveRow;if(confirm('Удалить эту запись из формы?')){state.logDraftRows.splice(i,1);render()}}));
     $('[data-v9-save-results]')?.addEventListener('click',()=>{const rows=(state.logDraftRows||[]).map((r,i)=>({date:$(`[data-v9-date="${i}"]`)?.value||'',kg:parseFloat(String($(`[data-v9-kg="${i}"]`)?.value||'').replace(',','.'))||0,reps:parseInt($(`[data-v9-reps="${i}"]`)?.value||'0')||0})).filter(r=>r.date&&(r.kg||r.reps));if(!rows.length)return alert('Добавь хотя бы одну дату и вес или повторения.');const t=Date.now();rows.forEach((r,i)=>state.exerciseLogs.unshift({id:'l'+t+'-'+i,createdAt:t+i,exerciseId:state.logExerciseId,date:r.date,kg:r.kg,reps:r.reps,sets:1,setsData:[{kg:r.kg,reps:r.reps}],source:'manual'}));state.logDraftRows=[];state.sheet=null;render()});
   };
+
+
+  // v10: real Lyfta technique guide instead of generic arrow diagrams.
+  function guideCacheKey(e){return 'trainly-v10-guide:'+String(e.id||e.originalName||e.name)}
+  function readGuideCache(e){try{return JSON.parse(localStorage.getItem(guideCacheKey(e))||'null')}catch{return null}}
+  function realGuideShell(e){
+    const g=readGuideCache(e);
+    if(g?.steps?.length)return realGuideMarkup(g);
+    return `<section class="real-guide" id="real-guide" data-guide-ex="${esc(e.id)}"><div class="real-guide-head"><div><span>КАК ВЫПОЛНЯТЬ</span><h3>Точная техника упражнения</h3></div><span class="guide-source">Lyfta</span></div><div class="guide-loading"><span class="guide-spinner"></span><div><strong>Загружаю инструкцию именно для этого упражнения…</strong><p>Без универсальных подсказок и догадок.</p></div></div></section>`;
+  }
+  function realGuideMarkup(g){
+    const video=g.videoUrl?`<video class="guide-video" controls playsinline preload="metadata" poster="${esc(g.thumbnail||'')}"><source src="${esc(g.videoUrl)}"></video>`:'';
+    const steps=(g.steps||[]).map((x,i)=>`<li><span>${i+1}</span><p>${esc(x)}</p></li>`).join('');
+    const tips=(g.tips||[]).slice(0,3).map(x=>`<li>${esc(x)}</li>`).join('');
+    return `<section class="real-guide" id="real-guide"><div class="real-guide-head"><div><span>КАК ВЫПОЛНЯТЬ</span><h3>Пошаговая техника</h3></div><span class="guide-source">Lyfta</span></div>${video}<ol class="real-guide-steps">${steps}</ol>${tips?`<details class="guide-tips"><summary>Советы по технике</summary><ul>${tips}</ul></details>`:''}<div class="guide-actions">${g.pageUrl?`<a class="ios-primary guide-link" href="${esc(g.pageUrl)}" target="_blank" rel="noopener">▶ Открыть видео-гайд Lyfta</a>`:''}<button class="ios-secondary" data-refresh-guide>Обновить инструкцию</button></div></section>`;
+  }
+  async function loadRealGuide(){
+    const box=$('#real-guide'); if(!box)return;
+    const e=state.selectedExercise; if(!e||e.custom)return;
+    const cached=readGuideCache(e); if(cached?.steps?.length)return;
+    const base=(window.TRAINLY_CONFIG?.API_BASE||'').replace(/\/$/,''); if(!base)return;
+    try{
+      const r=await fetch(`${base}/api/guide?name=${encodeURIComponent(e.originalName||e.name)}`,{headers:{Accept:'application/json'}});
+      const g=await r.json();
+      if(!r.ok||!g.ok)throw new Error(g.error||'guide unavailable');
+      localStorage.setItem(guideCacheKey(e),JSON.stringify(g));
+      if($('#real-guide'))$('#real-guide').outerHTML=realGuideMarkup(g);
+      bindGuideActions(e);
+    }catch(err){
+      if($('#real-guide'))$('#real-guide').innerHTML=`<div class="real-guide-head"><div><span>КАК ВЫПОЛНЯТЬ</span><h3>Техника пока недоступна</h3></div></div><p class="guide-error">Не удалось получить точную инструкцию Lyfta для этого упражнения. Я не показываю универсальную схему, чтобы не вводить тебя в заблуждение.</p><button class="ios-secondary full" data-refresh-guide>Попробовать ещё раз</button>`;
+      bindGuideActions(e);
+    }
+  }
+  function bindGuideActions(e){
+    $('[data-refresh-guide]')?.addEventListener('click',()=>{localStorage.removeItem(guideCacheKey(e));const b=$('#real-guide');if(b){b.outerHTML=realGuideShell(e);loadRealGuide()}})
+  }
+  const bindV10=bind;
+  bind=function(){bindV10();bindGuideActions(state.selectedExercise);if($('#real-guide'))setTimeout(loadRealGuide,30)};
+
 })();
