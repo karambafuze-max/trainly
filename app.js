@@ -235,8 +235,11 @@ async function syncLyftaCatalog(){
   try{
     state.catalogStatus='Загружаю каталог Lyfta…';render();
     const r=await fetch(base+'/api/library',{headers:{Accept:'application/json'}}); const data=await r.json();
-    if(!r.ok||!data.ok)throw new Error(data.detail||data.error||'Ошибка API');
-    const remote=(data.exercises||[]).map(normalizeLyfta); const customs=state.exercises.filter(e=>e.custom); const favs=new Set(JSON.parse(localStorage.getItem('trainly-favorites')||'[]'));
+    if (!r.ok || data.status !== true) {
+  throw new Error(data.detail || data.error || 'Ошибка API');
+}
+
+const remote = (data.data?.results || []).map(normalizeLyfta);; const customs=state.exercises.filter(e=>e.custom); const favs=new Set(JSON.parse(localStorage.getItem('trainly-favorites')||'[]'));
     remote.forEach(e=>{if(favs.has(e.id))e.favorite=true});
     const byId=new Map(); [...customs,...remote,...seeds].forEach(e=>{if(!byId.has(e.id))byId.set(e.id,e)}); state.exercises=[...byId.values()];
     state.catalogCount=remote.length; state.catalogStatus=remote.length?`Каталог Lyfta подключён`:'Lyfta ответила, но упражнения не найдены'; render();
